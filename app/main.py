@@ -30,6 +30,20 @@ async def startup_event():
     create_db_and_tables()
 
 
+from fastapi.responses import RedirectResponse
+
+
+@app.get("/")
+def read_root():
+    # return {"message": "Welcome to the Hero API. Use /heroes to access the API."}
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+
 # Models
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
