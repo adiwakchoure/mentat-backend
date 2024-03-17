@@ -35,8 +35,7 @@ from fastapi.responses import RedirectResponse
 
 @app.get("/")
 def read_root():
-    # return {"message": "Welcome to the Hero API. Use /heroes to access the API."}
-    return RedirectResponse(url="/docs")
+    return RedirectResponse(url="/health")
 
 
 @app.get("/health")

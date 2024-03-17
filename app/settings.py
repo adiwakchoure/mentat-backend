@@ -1,18 +1,22 @@
-# fastapi_neon/settings.py
+import os
+from dotenv import load_dotenv
 
-from starlette.config import Config
+load_dotenv()  # take environment variables from .env.
 
-from starlette.datastructures import Secret
+import marvin
 
+marvin.settings.openai.api_key = os.getenv("OPENAI_API_KEY")
 
-try:
+from brave import Brave
 
-    config = Config(".env")
+braveSync = Brave(api_key=os.getenv("BRAVE_API_KEY"))
 
-except FileNotFoundError:
+from tavily import TavilyClient
 
-    config = Config()
+tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
+# Try to get DATABASE_URL from environment variables
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# DATABASE_URL = config("DATABASE_URL", cast=Secret)
-DATABASE_URL = "postgresql://neondb_owner:HKk1JzmsA5cP@ep-purple-thunder-a5aqu41b.us-east-2.aws.neon.tech/neondb?sslmode=require"
+if not DATABASE_URL:
+    print("Error: DATABASE_URL not set in environment variables.")
