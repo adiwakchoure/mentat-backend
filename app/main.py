@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Optional
 from fastapi import Depends, FastAPI, HTTPException, Request
-
+from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Field, Relationship, Session, SQLModel, create_engine, select, JSON
 from pydantic import BaseModel
 from app import settings
@@ -25,6 +25,14 @@ def get_session():
 
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
 
 @app.on_event("startup")
