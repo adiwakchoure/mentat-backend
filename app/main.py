@@ -5,6 +5,8 @@ from sqlmodel import Field, Relationship, Session, SQLModel, create_engine, sele
 from pydantic import BaseModel
 from app import settings
 
+from app.utils import query_handler, InsightPoint
+
 connection_string = str(settings.DATABASE_URL).replace(
     "postgresql", "postgresql+psycopg"
 )
@@ -103,6 +105,13 @@ class ProfileCreate(BaseModel):
 class InsightCreate(BaseModel):
     text: str
     profile_id: int
+
+
+# 0. MVP
+@app.get("/query")
+async def handle_query(query: str):
+    insights = query_handler(query=query)
+    return insights
 
 
 # 1. User Interface
