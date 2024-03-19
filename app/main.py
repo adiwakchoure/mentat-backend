@@ -1,16 +1,18 @@
-from typing import List
+import ulid
+import marvin
+from typing import List, Dict
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Field, Relationship, Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine
 from datetime import datetime
-import ulid
-from pydantic import BaseModel
 from app import settings
+from app.models import Insight, InsightCreate, Query, QueryFetch, QueryFetchAnswer
 
 connection_string = str(settings.DATABASE_URL).replace(
     "postgresql", "postgresql+psycopg"
 )
-engine = create_engine(connection_string)
+
+engine = create_engine(connection_string, pool_pre_ping=True)
 
 
 def create_db_and_tables():
@@ -63,45 +65,6 @@ async def integrity_error_handler(request, exc):
     )
 
 
-class Query(SQLModel, table=True):
-    id: str = Field(
-        default_factory=lambda: str(ulid.from_timestamp(datetime.now())),
-        primary_key=True,
-    )
-    content: str
-    insights: List["Insight"] = Relationship(back_populates="query")
-    created_at: datetime
-    updated_at: datetime
-
-
-class Insight(SQLModel, table=True):
-    id: str = Field(
-        default_factory=lambda: str(ulid.new()),
-        primary_key=True,
-    )
-    title: str
-    category: str
-    content: str
-    source: str
-    impact: str
-    created_at: datetime
-    confidence: float
-    entity: str
-    query_id: str = Field(foreign_key="query.id")  # Add this line
-    query: "Query" = Relationship(back_populates="insights")  # Add this line
-
-
-class InsightCreate(BaseModel):
-    title: str
-    category: str
-    content: str
-    source: str
-    impact: str
-    created_at: datetime
-    confidence: float
-    entity: str
-
-
 # Dummy data
 dummy_insights = [
     Insight(
@@ -151,10 +114,49 @@ async def handle_query(query: str, session: Session = Depends(get_session)):
     return query_id
 
 
-@app.get("/query/fetch/{query_id}", response_model=List[Insight])
+@marvin.fn
+def follow_up_questions(query: str, insights: List[Dict]) -> List[str]:
+    """
+    Generate 2 worthwhile follow up questions, to aid market research or oppositional research in the context of the given query and insights.
+    The questions must be under 15 words each
+    """
+    pass
+
+
+@marvin.fn
+def answer_with_insights(question: str, insights: List[Dict]) -> str:
+    """
+    This function takes a question and a list of insights as input and returns a concise and informative answer as output. Just start answering the question, no need to repeat the question.
+    The answer is generated for the purpose of market research or oppositional research based on the given question and insights. It is a markdown formatted summary of no more than 200 words.
+    Do not just repeat the details from the insights, synthesize it into an informative and concise answer.
+
+    str: A markdown formatted string, containing an informative and concise answer generated based on the question and insights. It must be no more than 200 words.
+    """
+    pass
+
+
+@app.get("/query/fetch/{query_id}", response_model=QueryFetch)
 async def fetch_query(query_id: str, session: Session = Depends(get_session)):
+    query = session.query(Query).filter(Query.id == query_id).first()
+    if query is None:
+        raise HTTPException(status_code=404, detail="Query not found")
     insights = session.query(Insight).filter(Insight.query_id == query_id).all()
-    return insights
+    return {"query": query.content, "insights": insights}
+
+
+@app.get("/query/fetch-answer/{query_id}", response_model=QueryFetchAnswer)
+async def fetch_query(query_id: str, session: Session = Depends(get_session)):
+    query = session.query(Query).filter(Query.id == query_id).first()
+    if query is None:
+        raise HTTPException(status_code=404, detail="Query not found")
+    question = query.content
+    insights = session.query(Insight).filter(Insight.query_id == query_id).all()
+    return {
+        "query": question,
+        "insights": insights,
+        "answer": answer_with_insights(question, insights),
+        "follow_up_questions": follow_up_questions(question, insights),
+    }
 
 
 @app.post("/query/{query_id}/insight", response_model=Insight)
@@ -185,45 +187,4 @@ async def append_insight(
         raise HTTPException(
             status_code=400,
             detail="A record with the same unique constraint already exists.",
-        )
-
-
-@app.put("/query/update/{query_id}", response_model=List[Insight])
-async def update_query(
-    query_id: str, new_query: str, session: Session = Depends(get_session)
-):
-    # Update the query content
-    query = session.query(Query).filter(Query.id == query_id).first()
-    if query:
-        query.content = new_query
-        session.commit()
-
-        # Update the insights with dummy insights
-        query.insights = [
-            Insight(**insight, query_id=query_id) for insight in dummy_insights
-        ]
-        session.commit()
-
-        # Return the updated insights
-        updated_insights = (
-            session.query(Insight).filter(Insight.query_id == query_id).all()
-        )
-        return updated_insights
-    else:
-        raise HTTPException(
-            status_code=404, detail=f"Query with ID {query_id} not found."
-        )
-
-
-@app.delete("/query/delete/{query_id}", response_model=str)
-async def delete_query(query_id: str, session: Session = Depends(get_session)):
-    # Delete the query and its associated insights
-    query = session.query(Query).filter(Query.id == query_id).first()
-    if query:
-        session.delete(query)
-        session.commit()
-        return f"Query with ID {query_id} has been deleted."
-    else:
-        raise HTTPException(
-            status_code=404, detail=f"Query with ID {query_id} not found."
         )

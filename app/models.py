@@ -1,40 +1,56 @@
-from pydantic import BaseModel, HttpUrl
+from sqlmodel import Field, Relationship, Session, SQLModel, create_engine
+from pydantic import BaseModel
 from typing import List
-from datetime import date
-from enum import Enum
+from datetime import datetime
+import ulid
 
 
-class InsightType(str, Enum):
-    COMPANY_OVERVIEW = "COMPANY_OVERVIEW"
-    PRODUCTS_SERVICES = "PRODUCTS_SERVICES"
-    COMPETITIVE_POSITION = "COMPETITIVE_POSITION"
-    MARKET_ANALYSIS = "MARKET_ANALYSIS"
-    FINANCIAL_PERFORMANCE = "FINANCIAL_PERFORMANCE"
-    MANAGEMENT_LEADERSHIP = "MANAGEMENT_LEADERSHIP"
-    STRATEGY_DIRECTION = "STRATEGY_DIRECTION"
-    BUSINESS_MODEL = "BUSINESS_MODEL"
-    INDUSTRY_INSIGHTS = "INDUSTRY_INSIGHTS"
+class Query(SQLModel, table=True):
+    id: str = Field(
+        default_factory=lambda: str(ulid.from_timestamp(datetime.now())),
+        primary_key=True,
+    )
+    content: str
+    insights: List["Insight"] = Relationship(back_populates="query")
+    created_at: datetime
+    updated_at: datetime
 
 
-class InsightPoint(BaseModel):
+class Insight(SQLModel, table=True):
+    id: str = Field(
+        default_factory=lambda: str(ulid.new()),
+        primary_key=True,
+    )
     title: str
     category: str
     content: str
-    sources: str
+    source: str
     impact: str
-    date: date
     confidence: float
+    entity: str
+    created_at: datetime
+    query_id: str = Field(foreign_key="query.id")  # Add this line
+    query: "Query" = Relationship(back_populates="insights")  # Add this line
 
 
-class CompanyInfo(BaseModel):
-    url: HttpUrl
-    summary: str
-    key_points: List[str]
+class QueryFetch(BaseModel):
+    query: str
+    insights: List[Insight]
 
 
-class UrlRelevance(BaseModel):
-    url: str
-    is_relevant: bool
-    relevance_score: float
-    insights: List[InsightType]
-    description: str
+class QueryFetchAnswer(BaseModel):
+    query: str
+    insights: List[Insight]
+    answer: str
+    follow_up_questions: List[str]
+
+
+class InsightCreate(BaseModel):
+    title: str
+    category: str
+    content: str
+    source: str
+    impact: str
+    confidence: float
+    entity: str
+    created_at: datetime
