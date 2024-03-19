@@ -17,6 +17,7 @@ brave-search = "^0.1.8"
 sqlmodel = "^0.0.16"
 psycopg = {extras = ["binary"], version = "^3.1.18"}
 ulid-py = "^1.1.0"
+pytest = "^8.1.1"
 
 
 [build-system]

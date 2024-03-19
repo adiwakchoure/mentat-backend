@@ -1,19 +1,16 @@
-from typing import List, Dict, Any, Optional
-from fastapi import Depends, FastAPI, HTTPException, Request
+from typing import List
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Field, Relationship, Session, SQLModel, create_engine, select, JSON
+from sqlmodel import Field, Relationship, Session, SQLModel, create_engine
+from datetime import datetime
+import ulid
 from pydantic import BaseModel
 from app import settings
-import datetime, ulid
-
-from app.utils import query_handler, Insight
 
 connection_string = str(settings.DATABASE_URL).replace(
     "postgresql", "postgresql+psycopg"
 )
-engine = create_engine(
-    connection_string, connect_args={"sslmode": "require"}, pool_recycle=300
-)
+engine = create_engine(connection_string)
 
 
 def create_db_and_tables():
@@ -29,24 +26,21 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
 @app.on_event("startup")
-async def startup_event():
+def startup_event():
     create_db_and_tables()
-
-
-from fastapi.responses import RedirectResponse
 
 
 @app.get("/")
 def read_root():
-    return RedirectResponse(url="/health")
+    return {"message": "Welcome to the API!"}
 
 
 @app.get("/health")
@@ -54,87 +48,182 @@ def health_check():
     return {"status": "ok"}
 
 
-from pydantic import HttpUrl
-from datetime import date
-from sqlmodel import JSON
-import json
+from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request, exc):
+    """
+    Handles IntegrityError exceptions, which are raised when a database constraint is violated.
+    """
+    return HTTPException(
+        status_code=400,
+        detail="A record with the same unique constraint already exists.",
+    )
+
+
+class Query(SQLModel, table=True):
+    id: str = Field(
+        default_factory=lambda: str(ulid.from_timestamp(datetime.now())),
+        primary_key=True,
+    )
+    content: str
+    insights: List["Insight"] = Relationship(back_populates="query")
+    created_at: datetime
+    updated_at: datetime
 
 
 class Insight(SQLModel, table=True):
-    id: int = Field(default=None, primary_key=True)
+    id: str = Field(
+        default_factory=lambda: str(ulid.new()),
+        primary_key=True,
+    )
     title: str
     category: str
     content: str
     source: str
     impact: str
-    date: date
+    created_at: datetime
     confidence: float
-    query_id: str = Field(default=None, foreign_key="query.id")  # Add this line
+    entity: str
+    query_id: str = Field(foreign_key="query.id")  # Add this line
     query: "Query" = Relationship(back_populates="insights")  # Add this line
 
 
-class Query(SQLModel, table=True):
-    id: str = Field(default=None, primary_key=True)
+class InsightCreate(BaseModel):
+    title: str
+    category: str
     content: str
-    insights: List[Insight] = Relationship(back_populates="query")
+    source: str
+    impact: str
+    created_at: datetime
+    confidence: float
+    entity: str
 
 
-import time
-
-mockData = [
-    InsightPoint(
+# Dummy data
+dummy_insights = [
+    Insight(
         title="Amazon is a leading provider of e-commerce solutions",
         category="Company Overview",
         content="Amazon, founded by Jeff Bezos, has revolutionized the e-commerce industry. With its vast network and advanced logistics systems, it provides a wide range of products and services to customers around the globe.",
-        sources=["https://www.amazon.com/"],
+        source="https://www.amazon.com/",
         impact="High",
-        date=date.today(),
+        created_at=datetime.now(),
         confidence=0.95,
+        entity="Amazon",
     ),
-    InsightPoint(
+    Insight(
         title="Amazon has a competitive edge due to its advanced logistics systems",
         category="Competitive Position",
         content="Amazon's advanced logistics systems, including its use of robotics and AI, give it a competitive edge in the e-commerce industry. This allows Amazon to deliver products faster and more efficiently than its competitors.",
-        sources=["https://www.amazon.com/"],
+        source="https://www.amazon.com/",
         impact="Medium",
-        date=date.today(),
+        created_at=datetime.now(),
         confidence=0.85,
+        entity="Amazon",
     ),
 ]
 
 
-def query_handler(self, query: str, id: str) -> List[InsightPoint]:
-    # Simulate the process of performing market research based on the query and return a bunch of InsightPoints
-    return mockData
-
-
 # 0. MVP
-@app.get("/query/send")
+@app.post("/query/send", response_model=str)
 async def handle_query(query: str, session: Session = Depends(get_session)):
+    query_id = str(
+        ulid.from_timestamp(datetime.now())
+    )  # Generate a new unique ID for the query
 
-    query_id = ulid.from_timestamp(time.time())
-    insights = query_handler(query=query, id=query_id)
-
-    # Save the query and its insights to the database
-    db_query = Query(id=query_id, content=query, insights=insights)
+    # Save the query and its dummy insights to the database
+    db_query = Query(
+        id=query_id,
+        content=query,
+        insights=[
+            Insight(**insight.dict(), query_id=query_id) for insight in dummy_insights
+        ],
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
     session.add(db_query)
     session.commit()
 
-    print("Added Query!")
-    session.commit()
-
-    for insight in insights:
-        insight_dict = insight.dict()  # Convert the InsightPoint object to a dictionary
-        insight_dict["query_id"] = query_id  # Add the query_id field
-        db_insight = Insight(**insight_dict)  # Create the Insight object
-        session.add(db_insight)
-    session.commit()
-
-    # Return the UUID
+    # Return the query ID
     return query_id
 
 
-@app.get("/query/fetch")
+@app.get("/query/fetch/{query_id}", response_model=List[Insight])
 async def fetch_query(query_id: str, session: Session = Depends(get_session)):
     insights = session.query(Insight).filter(Insight.query_id == query_id).all()
-    return [insight.to_dict() for insight in insights]
+    return insights
+
+
+@app.post("/query/{query_id}/insight", response_model=Insight)
+async def append_insight(
+    query_id: str, insight: InsightCreate, session: Session = Depends(get_session)
+):
+    try:
+        # Fetch the query
+        query = session.query(Query).filter(Query.id == query_id).first()
+
+        if query:
+            # Create a new insight and associate it with the query
+            db_insight = Insight(**insight.dict(), query_id=query_id)
+            session.add(db_insight)
+
+            # Update the query's updated_at field
+            query.updated_at = datetime.now()
+
+            session.commit()
+            session.refresh(db_insight)
+            return db_insight
+        else:
+            raise HTTPException(
+                status_code=404, detail=f"Query with ID {query_id} not found."
+            )
+    except IntegrityError:
+        # Handle the exception by raising a custom HTTPException
+        raise HTTPException(
+            status_code=400,
+            detail="A record with the same unique constraint already exists.",
+        )
+
+
+@app.put("/query/update/{query_id}", response_model=List[Insight])
+async def update_query(
+    query_id: str, new_query: str, session: Session = Depends(get_session)
+):
+    # Update the query content
+    query = session.query(Query).filter(Query.id == query_id).first()
+    if query:
+        query.content = new_query
+        session.commit()
+
+        # Update the insights with dummy insights
+        query.insights = [
+            Insight(**insight, query_id=query_id) for insight in dummy_insights
+        ]
+        session.commit()
+
+        # Return the updated insights
+        updated_insights = (
+            session.query(Insight).filter(Insight.query_id == query_id).all()
+        )
+        return updated_insights
+    else:
+        raise HTTPException(
+            status_code=404, detail=f"Query with ID {query_id} not found."
+        )
+
+
+@app.delete("/query/delete/{query_id}", response_model=str)
+async def delete_query(query_id: str, session: Session = Depends(get_session)):
+    # Delete the query and its associated insights
+    query = session.query(Query).filter(Query.id == query_id).first()
+    if query:
+        session.delete(query)
+        session.commit()
+        return f"Query with ID {query_id} has been deleted."
+    else:
+        raise HTTPException(
+            status_code=404, detail=f"Query with ID {query_id} not found."
+        )
