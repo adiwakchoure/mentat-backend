@@ -54,65 +54,6 @@ def health_check():
     return {"status": "ok"}
 
 
-# Models
-# class Company(SQLModel, table=True):
-#     id: Optional[int] = Field(default=None, primary_key=True)
-#     name: str
-#     domain: str
-#     industry: str
-#     location: str
-#     size: int
-#     recent_news: str
-#     profiles: List["Profile"] = Relationship(back_populates="company")
-
-
-# class Profile(SQLModel, table=True):
-#     id: Optional[int] = Field(default=None, primary_key=True)
-#     name: str
-#     company_id: Optional[int] = Field(default=None, foreign_key="company.id")
-#     company: Optional[Company] = Relationship(back_populates="profiles")
-#     insights: List["Insight"] = Relationship(back_populates="profile")
-
-
-# class Insight(SQLModel, table=True):
-#     id: Optional[int] = Field(default=None, primary_key=True)
-#     text: str
-#     profile_id: Optional[int] = Field(default=None, foreign_key="profile.id")
-#     profile: Optional[Profile] = Relationship(back_populates="insights")
-
-
-# class ResearchTrace(SQLModel, table=True):
-#     id: int = Field(default=None, primary_key=True)
-#     data: str = Field(default=None)
-
-#     @property
-#     def data_list(self) -> List[str]:
-#         return json.loads(self.data)
-
-#     @data_list.setter
-#     def data_list(self, value: List[str]):
-#         self.data = json.dumps(value)
-
-
-# class CompanyCreate(BaseModel):
-#     name: str
-#     domain: str
-#     industry: str
-#     location: str
-#     size: int
-#     recent_news: str
-
-
-# class ProfileCreate(BaseModel):
-#     name: str
-#     company_id: int
-
-
-# class InsightCreate(BaseModel):
-#     text: str
-#     profile_id: int
-
-
 from pydantic import HttpUrl
 from datetime import date
 from sqlmodel import JSON
@@ -139,6 +80,32 @@ class Query(SQLModel, table=True):
 
 
 import time
+
+mockData = [
+    InsightPoint(
+        title="Amazon is a leading provider of e-commerce solutions",
+        category="Company Overview",
+        content="Amazon, founded by Jeff Bezos, has revolutionized the e-commerce industry. With its vast network and advanced logistics systems, it provides a wide range of products and services to customers around the globe.",
+        sources=["https://www.amazon.com/"],
+        impact="High",
+        date=date.today(),
+        confidence=0.95,
+    ),
+    InsightPoint(
+        title="Amazon has a competitive edge due to its advanced logistics systems",
+        category="Competitive Position",
+        content="Amazon's advanced logistics systems, including its use of robotics and AI, give it a competitive edge in the e-commerce industry. This allows Amazon to deliver products faster and more efficiently than its competitors.",
+        sources=["https://www.amazon.com/"],
+        impact="Medium",
+        date=date.today(),
+        confidence=0.85,
+    ),
+]
+
+
+def query_handler(self, query: str, id: str) -> List[InsightPoint]:
+    # Simulate the process of performing market research based on the query and return a bunch of InsightPoints
+    return mockData
 
 
 # 0. MVP
